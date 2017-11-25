@@ -2,15 +2,18 @@
 
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.concurrent.{Callable, ExecutorService, Executors, FutureTask}
 
 import kafka.common.TopicAndPartition
 import kafka.serializer.StringDecoder
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkConf
+import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.kafka.KafkaUtils
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.slf4j.LoggerFactory
-import org.apache.spark.streaming._
+
+import scala.collection.mutable
 
 /**
   * Created by xiaoy on 2017/11/22.
@@ -18,8 +21,12 @@ import org.apache.spark.streaming._
 object MySparkStreamingApp {
   def main(args: Array[String]): Unit = {
 
+    AppConfig.runMode = args(0)
+    AppConfig.brokerList = args(1)
+    AppConfig.messageRate = args(2)
+
     val context =
-      if (args(0).equals("local")) {
+      if (AppConfig.runMode.equals("local")) {
         createStreamingContext()
       } else {
         StreamingContext.getOrCreate("/user/root/xiaoy/cp",
@@ -47,16 +54,19 @@ object MySparkStreamingApp {
     Logger.getLogger("kafka.utils").setLevel(Level.WARN)
 
     val conf = new SparkConf()
-      .setMaster("local[10]")
       .setAppName("MySparkStreamingApp")
-      .set("spark.streaming.kafka.maxRatePerPartition", "100")
-    val ssc = new StreamingContext(conf, Seconds(3))
+      .set("spark.streaming.kafka.maxRatePerPartition", AppConfig.messageRate)
+
+    if (AppConfig.runMode.equals("local")) {
+      conf.setMaster("local[20]")
+    }
+
+    val ssc = new StreamingContext(conf, Seconds(1))
     val topics = "sztran"
-    val brokers = "host1:6667,host2:6667,host3:6667,host4:6667,host5:6667"
 
     val topicsSet = topics.split(",").toSet
     val kafkaParams = Map[String, String](
-      "metadata.broker.list" -> brokers,
+      "metadata.broker.list" -> AppConfig.brokerList,
       "group.id" -> "group_of_xiaoy",
       "auto.offset.reset" -> "smallest"
     )
@@ -64,28 +74,44 @@ object MySparkStreamingApp {
     val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](
       ssc, kafkaParams, topicsSet)
 
-    val recordDStream = messages.map(m => {
-      val fields = m._2.split("\\|")
+    val recordDStream = messages.transform(rdd => {
+      //      val now = new Date()
+      //      println("%s Begin to process rdd %s".format(now.toString, rdd.id))
+      //      rdd.sparkContext.setLocalProperty(
+      //        "spark.scheduler.pool","pool_%d".format((Math.random() * 10).toInt % 5))
       val now = new Date().getTime
-      fields(0) -> (now, fields(7).toFloat, fields(7).toFloat)
+      rdd.map(m => {
+        val fields = m._2.split("\\|")
+        (fields(2), fields(3)) -> (now, fields(6).toFloat * fields(7).toFloat)
+      })
     })
 
     val record3mWindow =
-      recordDStream.reduceByKeyAndWindow((x: (Long, Float, Float), y: (Long, Float, Float)) => {
-        (Math.min(x._1, y._1), Math.max(x._2, y._2), Math.min(x._3, y._3))
-      }, Seconds(30), Seconds(3))
-        .filter(x => {
-          val v = x._2
-          (v._2 - v._3)/v._3 > 0.22
-        })
+      recordDStream.reduceByKeyAndWindow((x: (Long, Float), y: (Long, Float)) => {
+        (Math.max(x._1, y._1), x._2 + y._2)
+      }, Seconds(60), Seconds(1))
+        .filter(x => x._2._2 > 50000)
+
+    val oldWarnings = new mutable.HashMap[(String, String), (Long, Float)]()
 
     record3mWindow.foreachRDD(rdd => {
       val now = new Date()
       val format = new SimpleDateFormat("hh:mm:ss.SSS")
 
+      println("Warnings issued at %s ...".format(format.format(now)))
+
       rdd.collect().foreach(x => {
-        println("[%s]: %s  %-10.2f %-10.2f %s".format(
-          x._1, format.format(now), x._2._2, x._2._3, format.format(new Date(x._2._1))))
+        if (oldWarnings.contains(x._1)) {
+          if (x._2._1 - oldWarnings(x._1)._1 > 60 * 1000) {
+            oldWarnings(x._1) = x._2
+            //            println("[%s]: %20.2f %20s".format(
+            //              x._1, x._2._2, format.format(new Date(x._2._1))))
+          }
+        } else {
+          oldWarnings(x._1) = x._2
+          //          println("[%s]: %20.2f %20s".format(
+          //            x._1, x._2._2, format.format(new Date(x._2._1))))
+        }
       })
     })
 

@@ -163,10 +163,21 @@ LOG_FILE=zipper_${CURR_TIME}.log
 echo "Please wait ..."
 echo
 
+hdfs dfs -rm -r /user/root/xiaoy/cp
+hdfs dfs -mkdir -p /user/root/xiaoy/cp
+
 spark-submit \
 	--class MySparkStreamingApp \
+        --master yarn-client \
+        --num-executors 7 \
+        --driver-memory 2g \
+        --executor-memory 4g \
+        --executor-cores 4 \
+        --conf spark.default.parallelism=12 \
+        --conf spark.scheduler.mode=FAIR \
+        --conf spark.streaming.concurrentJobs=4 \
 	--jars $DEPS \
-	test-spark-2-1.0-SNAPSHOT.jar local aisvr1:6667,aisvr2:6667,aisvr3:6667,aisvr4:6667 1000
+	test-spark-2-1.0-SNAPSHOT.jar cluster aisvr2:6667,aisvr3:6667,aisvr4:6667 40000
 
 
 #grep Excep ${LOG_FILE} > /dev/null
