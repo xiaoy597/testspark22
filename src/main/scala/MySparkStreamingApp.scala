@@ -23,7 +23,13 @@ object MySparkStreamingApp {
 
     AppConfig.runMode = args(0)
     AppConfig.brokerList = args(1)
-    AppConfig.messageRate = args(2)
+    AppConfig.kafkaTopic = args(2)
+    AppConfig.messageRate = args(3)
+    AppConfig.windowWidth = args(4)
+    AppConfig.slidingInterval = args(5)
+    AppConfig.threashold1 = args(6).toFloat
+    AppConfig.threashold2 = args(7).toFloat
+    AppConfig.threashold3 = args(8).toFloat
 
     val context =
       if (AppConfig.runMode.equals("local")) {
@@ -62,7 +68,7 @@ object MySparkStreamingApp {
     }
 
     val ssc = new StreamingContext(conf, Seconds(1))
-    val topics = "sztran"
+    val topics = AppConfig.kafkaTopic
 
     val topicsSet = topics.split(",").toSet
     val kafkaParams = Map[String, String](
@@ -71,14 +77,13 @@ object MySparkStreamingApp {
       "auto.offset.reset" -> "smallest"
     )
 
+    val thresholdBroadcast = ssc.sparkContext.broadcast(AppConfig.threashold1)
+
+
     val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](
       ssc, kafkaParams, topicsSet)
 
     val recordDStream = messages.transform(rdd => {
-      //      val now = new Date()
-      //      println("%s Begin to process rdd %s".format(now.toString, rdd.id))
-      //      rdd.sparkContext.setLocalProperty(
-      //        "spark.scheduler.pool","pool_%d".format((Math.random() * 10).toInt % 5))
       val now = new Date().getTime
       rdd.map(m => {
         val fields = m._2.split("\\|")
@@ -89,10 +94,10 @@ object MySparkStreamingApp {
     val record3mWindow =
       recordDStream.reduceByKeyAndWindow((x: (Long, Float), y: (Long, Float)) => {
         (Math.max(x._1, y._1), x._2 + y._2)
-      }, Seconds(60), Seconds(1))
-        .filter(x => x._2._2 > 50000)
+      }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
+        .filter(x => x._2._2 >= thresholdBroadcast.value)
 
-    val oldWarnings = new mutable.HashMap[(String, String), (Long, Float)]()
+//    val oldWarnings = new mutable.HashMap[(String, String), (Long, Float)]()
 
     record3mWindow.foreachRDD(rdd => {
       val now = new Date()
@@ -101,17 +106,30 @@ object MySparkStreamingApp {
       println("Warnings issued at %s ...".format(format.format(now)))
 
       rdd.collect().foreach(x => {
-        if (oldWarnings.contains(x._1)) {
-          if (x._2._1 - oldWarnings(x._1)._1 > 60 * 1000) {
-            oldWarnings(x._1) = x._2
-            //            println("[%s]: %20.2f %20s".format(
-            //              x._1, x._2._2, format.format(new Date(x._2._1))))
-          }
-        } else {
-          oldWarnings(x._1) = x._2
-          //          println("[%s]: %20.2f %20s".format(
-          //            x._1, x._2._2, format.format(new Date(x._2._1))))
-        }
+//        if (oldWarnings.contains(x._1)) {
+//          if (x._2._1 - oldWarnings(x._1)._1 > 60 * 1000) {
+//            oldWarnings(x._1) = x._2
+//            println("[%s]: %20.2f %20s".format(
+//              x._1, x._2._2, format.format(new Date(x._2._1))))
+//          }
+//        } else {
+//          oldWarnings(x._1) = x._2
+//          println("[%s]: %20.2f %20s".format(
+//            x._1, x._2._2, format.format(new Date(x._2._1))))
+//        }
+
+        println("[%s]: %20.2f, Warning Level %.2f, Last transaction at %s".format(
+          x._1, x._2._2,
+          if (x._2._2 >= AppConfig.threashold3) {
+            AppConfig.threashold3
+          } else {
+            if (x._2._2 >= AppConfig.threashold2) {
+              AppConfig.threashold2
+            } else
+              AppConfig.threashold1
+          },
+          format.format(new Date(x._2._1))
+        ))
       })
     })
 

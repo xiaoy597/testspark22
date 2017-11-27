@@ -168,16 +168,17 @@ hdfs dfs -mkdir -p /user/root/xiaoy/cp
 
 spark-submit \
 	--class MySparkStreamingApp \
-        --master yarn-client \
-        --num-executors 7 \
+        --master yarn \
+        --deploy-mode client \
+        --num-executors 6 \
         --driver-memory 2g \
         --executor-memory 4g \
         --executor-cores 4 \
         --conf spark.default.parallelism=12 \
         --conf spark.scheduler.mode=FAIR \
-        --conf spark.streaming.concurrentJobs=4 \
+        --conf spark.streaming.concurrentJobs=2 \
 	--jars $DEPS \
-	test-spark-2-1.0-SNAPSHOT.jar cluster aisvr2:6667,aisvr3:6667,aisvr4:6667 40000
+	test-spark-2-1.0-SNAPSHOT.jar cluster aisvr2:6667,aisvr3:6667,aisvr4:6667 sztran-key 40000 180 1
 
 
 #grep Excep ${LOG_FILE} > /dev/null

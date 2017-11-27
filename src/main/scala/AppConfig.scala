@@ -3,6 +3,12 @@
   */
 object AppConfig {
   var brokerList:String = null
-  var runMode:String = "local"
-  var messageRate:String = "100"
+  var runMode = "local"
+  var messageRate = "100"
+  var windowWidth = "180"
+  var slidingInterval = "2"
+  var kafkaTopic = "sztran-key"
+  var threashold1:Float = 0
+  var threashold2:Float = 0
+  var threashold3:Float = 0
 }
