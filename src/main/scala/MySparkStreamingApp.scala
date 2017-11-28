@@ -1,23 +1,18 @@
-
+/**
+  * Created by xiaoy on 2017/11/22.
+  */
 
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.concurrent.{Callable, ExecutorService, Executors, FutureTask}
 
 import kafka.common.TopicAndPartition
 import kafka.serializer.StringDecoder
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkConf
-import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.kafka.KafkaUtils
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.slf4j.LoggerFactory
 
-import scala.collection.mutable
-
-/**
-  * Created by xiaoy on 2017/11/22.
-  */
 object MySparkStreamingApp {
   def main(args: Array[String]): Unit = {
 
@@ -27,9 +22,9 @@ object MySparkStreamingApp {
     AppConfig.messageRate = args(3)
     AppConfig.windowWidth = args(4)
     AppConfig.slidingInterval = args(5)
-    AppConfig.threashold1 = args(6).toFloat
-    AppConfig.threashold2 = args(7).toFloat
-    AppConfig.threashold3 = args(8).toFloat
+    AppConfig.transAmtThreshold1 = args(6).toFloat
+    AppConfig.transAmtThreshold2 = args(7).toFloat
+    AppConfig.transAmtThreshold3 = args(8).toFloat
 
     val context =
       if (AppConfig.runMode.equals("local")) {
@@ -77,7 +72,7 @@ object MySparkStreamingApp {
       "auto.offset.reset" -> "smallest"
     )
 
-    val thresholdBroadcast = ssc.sparkContext.broadcast(AppConfig.threashold1)
+    val thresholdBroadcast = ssc.sparkContext.broadcast(AppConfig.transAmtThreshold1)
 
 
     val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](
@@ -120,13 +115,13 @@ object MySparkStreamingApp {
 
         println("[%s]: %20.2f, Warning Level %.2f, Last transaction at %s".format(
           x._1, x._2._2,
-          if (x._2._2 >= AppConfig.threashold3) {
-            AppConfig.threashold3
+          if (x._2._2 >= AppConfig.transAmtThreshold3) {
+            AppConfig.transAmtThreshold3
           } else {
-            if (x._2._2 >= AppConfig.threashold2) {
-              AppConfig.threashold2
+            if (x._2._2 >= AppConfig.transAmtThreshold2) {
+              AppConfig.transAmtThreshold2
             } else
-              AppConfig.threashold1
+              AppConfig.transAmtThreshold1
           },
           format.format(new Date(x._2._1))
         ))
