@@ -23,16 +23,17 @@ object MyKafkaProducer {
     props.put("buffer.memory", "33554432")
     props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
     props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+    props.put("compression-codec", "snappy")
 
     val producer = new KafkaProducer[String, String](props)
 
-    for (batch <- 0 to 5) {
+    for (batch <- 1 to 5) {
       println("Batch %d begins.".format(batch))
 
       val source = Source.fromFile(dataFile)
       var count = 0
       for (line <- source.getLines()) {
-        val fields = line.split("\\|")
+        val fields = line.split("\\^\\|")
         // 深市过户表
         if (topic.equals("sztran-key")) {
           producer.send(new ProducerRecord[String, String](topic, fields(2), line))

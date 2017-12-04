@@ -17,4 +17,5 @@ object AppConfig {
   var transAmtThreshold1:Float = 0
   var transAmtThreshold2:Float = 0
   var transAmtThreshold3:Float = 0
+  var monitorList:List[String] = List.empty[String]
 }

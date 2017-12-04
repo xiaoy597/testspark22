@@ -26,6 +26,9 @@ object MySparkStreamingApp {
     AppConfig.transAmtThreshold2 = args(7).toFloat
     AppConfig.transAmtThreshold3 = args(8).toFloat
 
+    if (args.length > 9)
+      AppConfig.monitorList = new MonitorObject(args(9)).objects()
+
     val context =
       if (AppConfig.runMode.equals("local")) {
         createStreamingContext()
@@ -81,8 +84,8 @@ object MySparkStreamingApp {
     val recordDStream = messages.transform(rdd => {
       val now = new Date().getTime
       rdd.map(m => {
-        val fields = m._2.split("\\|")
-        (fields(2), fields(3)) -> (now, fields(6).toFloat * fields(7).toFloat)
+        val fields = m._2.split("\\^\\|")
+        (fields(3), fields(4)) -> (now, fields(7).toFloat * fields(8).toFloat)
       })
     })
 
@@ -92,7 +95,7 @@ object MySparkStreamingApp {
       }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
         .filter(x => x._2._2 >= thresholdBroadcast.value)
 
-//    val oldWarnings = new mutable.HashMap[(String, String), (Long, Float)]()
+    //    val oldWarnings = new mutable.HashMap[(String, String), (Long, Float)]()
 
     record3mWindow.foreachRDD(rdd => {
       val now = new Date()
@@ -100,18 +103,18 @@ object MySparkStreamingApp {
 
       println("Warnings issued at %s ...".format(format.format(now)))
 
-      rdd.collect().foreach(x => {
-//        if (oldWarnings.contains(x._1)) {
-//          if (x._2._1 - oldWarnings(x._1)._1 > 60 * 1000) {
-//            oldWarnings(x._1) = x._2
-//            println("[%s]: %20.2f %20s".format(
-//              x._1, x._2._2, format.format(new Date(x._2._1))))
-//          }
-//        } else {
-//          oldWarnings(x._1) = x._2
-//          println("[%s]: %20.2f %20s".format(
-//            x._1, x._2._2, format.format(new Date(x._2._1))))
-//        }
+      rdd.collect().filter(x => AppConfig.monitorList.contains(x._1._1)).foreach(x => {
+        //        if (oldWarnings.contains(x._1)) {
+        //          if (x._2._1 - oldWarnings(x._1)._1 > 60 * 1000) {
+        //            oldWarnings(x._1) = x._2
+        //            println("[%s]: %20.2f %20s".format(
+        //              x._1, x._2._2, format.format(new Date(x._2._1))))
+        //          }
+        //        } else {
+        //          oldWarnings(x._1) = x._2
+        //          println("[%s]: %20.2f %20s".format(
+        //            x._1, x._2._2, format.format(new Date(x._2._1))))
+        //        }
 
         println("[%s]: %20.2f, Warning Level %.2f, Last transaction at %s".format(
           x._1, x._2._2,

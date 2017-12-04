@@ -29,6 +29,9 @@ object MySparkStreamingApp2 {
     AppConfig.transAmtPctThreshold2 = args(10).toFloat
     AppConfig.transAmtPctThreshold3 = args(11).toFloat
 
+    if (args.length > 12)
+      AppConfig.monitorList = new MonitorObject(args(12)).objects()
+
     val context =
       if (AppConfig.runMode.equals("local")) {
         createStreamingContext()
@@ -96,8 +99,8 @@ object MySparkStreamingApp2 {
     val recordDStream = messages.transform(rdd => {
       val now = new Date().getTime
       rdd.map(m => {
-        val fields = m._2.split("\\|")
-        fields(0) -> (now, fields(5).toFloat, fields(13).toFloat, fields(13).toFloat)
+        val fields = m._2.split("\\^\\|")
+        fields(1) -> (now, fields(9).toFloat, fields(14).toFloat, fields(14).toFloat)
       })
     })
 
@@ -120,8 +123,9 @@ object MySparkStreamingApp2 {
 
       rdd.filter(x => {
         x._2._1 / x._2._2 >= transAmtPctThresholdBroadcast.value &&
+        x._2._1 / x._2._2 < 0.999 &&
           x._2._3 >= vibrateThresholdBroadcast.value
-      }).collect().foreach(x => {
+      }).collect().filter(x => AppConfig.monitorList.contains(x._1)).foreach(x => {
 
         val transAmtPct = x._2._1 / x._2._2
         val vibrateRate = x._2._3
