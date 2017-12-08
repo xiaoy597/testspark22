@@ -5,8 +5,9 @@
 import java.text.SimpleDateFormat
 import java.util.Date
 
-import kafka.common.TopicAndPartition
 import kafka.serializer.StringDecoder
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FSDataOutputStream, FileSystem, Path}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.kafka.KafkaUtils
@@ -36,6 +37,17 @@ object MySparkStreamingApp {
         StreamingContext.getOrCreate("/user/root/xiaoy/cp",
           MySparkStreamingApp.functionToCreateContext)
       }
+
+    val hdfs: FileSystem = FileSystem.get(new Configuration)
+    val targetPath = new Path("/user/root/xiaoy/test2/test.dat")
+
+    if (hdfs.exists(targetPath))
+      hdfs.delete(targetPath, true)
+
+    hdfs.createNewFile(targetPath)
+    val outputStream: FSDataOutputStream = hdfs.create(targetPath)
+
+    AppConfig.outputStream = outputStream
 
     context.start() // Start the computation
     context.awaitTermination() // Wait for the computation to terminate
@@ -95,7 +107,6 @@ object MySparkStreamingApp {
       }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
         .filter(x => x._2._2 >= thresholdBroadcast.value)
 
-    //    val oldWarnings = new mutable.HashMap[(String, String), (Long, Float)]()
 
     record3mWindow.foreachRDD(rdd => {
       val now = new Date()
@@ -104,20 +115,9 @@ object MySparkStreamingApp {
       println("Warnings issued at %s ...".format(format.format(now)))
 
       rdd.collect().filter(x => AppConfig.monitorList.contains(x._1._1)).foreach(x => {
-        //        if (oldWarnings.contains(x._1)) {
-        //          if (x._2._1 - oldWarnings(x._1)._1 > 60 * 1000) {
-        //            oldWarnings(x._1) = x._2
-        //            println("[%s]: %20.2f %20s".format(
-        //              x._1, x._2._2, format.format(new Date(x._2._1))))
-        //          }
-        //        } else {
-        //          oldWarnings(x._1) = x._2
-        //          println("[%s]: %20.2f %20s".format(
-        //            x._1, x._2._2, format.format(new Date(x._2._1))))
-        //        }
 
-        println("[%s]: %20.2f, Warning Level %.2f, Last transaction at %s".format(
-          x._1, x._2._2,
+        val row = "%s|%s|%.2f|%.2f\n".format(
+          format.format(now), x._1, x._2._2,
           if (x._2._2 >= AppConfig.transAmtThreshold3) {
             AppConfig.transAmtThreshold3
           } else {
@@ -125,30 +125,16 @@ object MySparkStreamingApp {
               AppConfig.transAmtThreshold2
             } else
               AppConfig.transAmtThreshold1
-          },
-          format.format(new Date(x._2._1))
-        ))
+          }
+        )
+
+        AppConfig.outputStream.write(row.getBytes)
+        println(row)
       })
+
+      AppConfig.outputStream.flush()
     })
 
-    //    record3mWindow.print(2)
-    //
-    //    recordDStream.foreachRDD((rdd, t) => {
-    //      val d = new Date(t.milliseconds)
-    //      println("At time %s received %d messages"
-    //        .format(new SimpleDateFormat("hh:mm:ss SSS").format(new Date(t.milliseconds)), rdd.count()))
-    //    }
-    //    )
-
     ssc
-  }
-
-  def setFromOffsets(list: List[(String, Int, Long)]): Map[TopicAndPartition, Long] = {
-    var fromOffsets: Map[TopicAndPartition, Long] = Map()
-    for (offset <- list) {
-      val tp = TopicAndPartition(offset._1, offset._2) //topic和分区数
-      fromOffsets += (tp -> offset._3) // offset位置
-    }
-    fromOffsets
   }
 }

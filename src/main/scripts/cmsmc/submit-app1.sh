@@ -178,7 +178,7 @@ hdfs dfs -mkdir -p /user/root/xiaoy/cp
         --conf spark.streaming.concurrentJobs=4 \
         --conf spark.default.parallelism=32 \
 	--jars $DEPS \
-	test-spark-2-1.0-SNAPSHOT.jar cluster master:6667,slave1:6667,slave2:6667,slave3:6667,slave4:6667,slave5:6667,slave6:6667,slave7:6667 tp1 30000 180 1 50000000 100000000 300000000 account-list
+	test-spark-2-1.0-SNAPSHOT.jar cluster master:6667,slave1:6667,slave2:6667,slave3:6667,slave4:6667,slave5:6667,slave6:6667,slave7:6667 tp1 3000 180 1 50000000 100000000 300000000 account-list
 
 
 #grep Excep ${LOG_FILE} > /dev/null

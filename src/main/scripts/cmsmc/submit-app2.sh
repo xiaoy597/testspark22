@@ -180,7 +180,7 @@ spark-submit \
         --conf spark.streaming.concurrentJobs=4 \
         --conf spark.default.parallelism=32 \
 	--jars $DEPS \
-	test-spark-2-1.0-SNAPSHOT.jar cluster master:6667,slave1:6667,slave2:6667 test3 125000 180 1 0.02 0.04 0.06 0.01 0.05 0.1 sec-list
+	test-spark-2-1.0-SNAPSHOT.jar cluster master:6667,slave1:6667,slave2:6667 test3 10000 180 1 0.02 0.04 0.06 0.001 0.005 0.1 sec-list
 
 
 #grep Excep ${LOG_FILE} > /dev/null

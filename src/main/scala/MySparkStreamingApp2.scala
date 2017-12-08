@@ -7,6 +7,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 import kafka.serializer.StringDecoder
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FSDataOutputStream, FileSystem, Path}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.kafka.KafkaUtils
@@ -39,6 +41,17 @@ object MySparkStreamingApp2 {
         StreamingContext.getOrCreate("/user/root/xiaoy/cp",
           MySparkStreamingApp2.functionToCreateContext)
       }
+
+    val hdfs: FileSystem = FileSystem.get(new Configuration)
+    val targetPath = new Path("/user/root/xiaoy/test3/test.dat")
+
+    if (hdfs.exists(targetPath))
+      hdfs.delete(targetPath, true)
+
+    hdfs.createNewFile(targetPath)
+    val outputStream: FSDataOutputStream = hdfs.create(targetPath)
+
+    AppConfig.outputStream = outputStream
 
     context.start() // Start the computation
     context.awaitTermination() // Wait for the computation to terminate
@@ -130,8 +143,8 @@ object MySparkStreamingApp2 {
         val transAmtPct = x._2._1 / x._2._2
         val vibrateRate = x._2._3
 
-        println("[%s]: TransAmtPct: %6.2f(%.2f), VibrateRate: %6.2f(%.2f)".format(
-          x._1, transAmtPct,
+        val row = "%s|%s|%.4f|%.4f|%.4f|%.4f\n".format(
+          format.format(now), x._1, transAmtPct,
           if (transAmtPct >= AppConfig.transAmtPctThreshold3) {
             AppConfig.transAmtPctThreshold3
           } else {
@@ -149,12 +162,16 @@ object MySparkStreamingApp2 {
             } else
               AppConfig.vibrateThreshold1
           }
-        ))
-        println("[%s]: TransAmtLast3m=%.2f, TransAmtTotal=%.2f".format(
-          x._1, x._2._1, x._2._2
-        ))
+        )
 
+        AppConfig.outputStream.write(row.getBytes)
+        println(row)
+//        println("[%s]: TransAmtLast3m=%.2f, TransAmtTotal=%.2f".format(
+//          x._1, x._2._1, x._2._2
+//        ))
       })
+
+      AppConfig.outputStream.flush()
     })
 
     ssc

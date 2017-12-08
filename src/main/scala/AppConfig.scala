@@ -1,4 +1,5 @@
-import org.apache.hadoop.fs.FileSystem
+import org.apache.hadoop.fs.{FSDataOutputStream, FileSystem}
+import org.apache.hadoop.hdfs.client.HdfsDataOutputStream
 import org.apache.spark.broadcast.Broadcast
 
 /**
@@ -23,4 +24,5 @@ object AppConfig {
   var transAmtThreshold3:Float = 0
   var monitorList:List[String] = List.empty[String]
   var messageStore:String = ""
+  var outputStream:FSDataOutputStream = null
 }
