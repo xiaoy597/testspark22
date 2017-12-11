@@ -14,7 +14,7 @@ import org.apache.spark.streaming.kafka.KafkaUtils
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.slf4j.LoggerFactory
 
-object MySparkStreamingApp {
+object MySparkStreamingApp_2 {
   def main(args: Array[String]): Unit = {
 
     AppConfig.runMode = args(0)
@@ -61,8 +61,31 @@ object MySparkStreamingApp {
     ssc
   }
 
+  def updateStateFunc(newValues: Seq[(Long, String, Float)], curState: Option[(List[(Long, Float)], Float, List[(Long, Float)], Float)])
+  : Option[(List[(Long, Float)], Float, List[(Long, Float)], Float)] = {
+
+    val newValue:(Long, String, Float) = if (newValues.nonEmpty) newValues.head else (0, null, 0F)
+
+    curState match {
+      case None =>
+        newValue._2 match {
+          case "B" => Some(List((newValue._1, newValue._3)), newValue._3, List(), 0F)
+          case "S" => Some(List(), 0F, List((newValue._1, newValue._3)), newValue._3)
+        }
+      case Some(state) =>
+        newValue._2 match {
+          case "B" =>
+            val newList = ((newValue._1, newValue._3) :: state._1).filter(_._1 >= newValue._1 - 180 * 1000)
+            Some(newList, newList.reduce((x1, x2) => (0L, x1._2 + x2._2))._2, state._3, state._4)
+          case "S" =>
+            val newList = ((newValue._1, newValue._3) :: state._3).filter(_._1 >= newValue._1 - 180 * 1000)
+            Some(state._1, state._2, newList, newList.reduce((x1, x2) => (0L, x1._2 + x2._2))._2)
+        }
+    }
+  }
+
   def createStreamingContext(): StreamingContext = {
-    val logger = LoggerFactory.getLogger(MySparkStreamingApp.getClass)
+    val logger = LoggerFactory.getLogger(MySparkStreamingApp_2.getClass)
 
     Logger.getLogger("org.apache.kafka").setLevel(Level.WARN)
     Logger.getLogger("org.apache.zookeeper").setLevel(Level.WARN)
@@ -94,42 +117,38 @@ object MySparkStreamingApp {
       ssc, kafkaParams, topicsSet)
 
     val recordDStream = messages.transform(rdd => {
+      val now = new Date().getTime
       rdd.map(m => {
         val fields = m._2.split("\\^\\|")
-        fields(3) -> (
-          fields(4) match {
-            case "B" => (fields(7).toFloat * fields(8).toFloat, 0.0F)
-            case "S" => (0.0F, fields(7).toFloat * fields(8).toFloat)
-          })
+        fields(3) -> (now, fields(4), fields(7).toFloat * fields(8).toFloat)
       })
     })
 
-    val monitorListBroadcast = ssc.sparkContext.broadcast(AppConfig.monitorList)
+//    val record3mWindow =
+//      recordDStream.reduceByKeyAndWindow((x: (Float, Float), y: (Float, Float)) => {
+//        (x._1 + y._1, x._2 + y._2)
+//      }, (x: (Float, Float), y: (Float, Float)) => {
+//        (x._1 - y._1, x._2 - y._2)
+//      }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
+//        .filter(x => x._2._1 >= thresholdBroadcast.value || x._2._2 >= thresholdBroadcast.value)
 
-    val record3mWindow =
-      recordDStream.reduceByKeyAndWindow((x: (Float, Float), y: (Float, Float)) => {
-        (x._1 + y._1, x._2 + y._2)
-      }, (x: (Float, Float), y: (Float, Float)) => {
-        (x._1 - y._1, x._2 - y._2)
-      }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
-        .filter(x => monitorListBroadcast.value.contains(x._1) &&
-          (x._2._1 >= thresholdBroadcast.value || x._2._2 >= thresholdBroadcast.value))
+    val runningState = recordDStream.updateStateByKey(MySparkStreamingApp_2.updateStateFunc)
 
-
-    record3mWindow.foreachRDD(rdd => {
+    runningState.foreachRDD(rdd => {
       val now = new Date()
       val format = new SimpleDateFormat("hh:mm:ss.SSS")
+      val monitorListBroadcast = ssc.sparkContext.broadcast(AppConfig.monitorList)
 
       println("Warnings issued at %s ...".format(format.format(now)))
 
-      rdd.collect().foreach(x => {
+      rdd.filter(x => monitorListBroadcast.value.contains(x._1)).collect().foreach(x => {
 
         val row = "%s|%s|%.2f|%.2f|%.2f\n".format(
-          format.format(now), x._1, x._2._1, x._2._2,
-          if (x._2._1 >= AppConfig.transAmtThreshold3 || x._2._2 >= AppConfig.transAmtThreshold3) {
+          format.format(now), x._1, x._2._2, x._2._4,
+          if (x._2._2 >= AppConfig.transAmtThreshold3 || x._2._4 >= AppConfig.transAmtThreshold3) {
             AppConfig.transAmtThreshold3
           } else {
-            if (x._2._1 >= AppConfig.transAmtThreshold2 || x._2._2 >= AppConfig.transAmtThreshold2) {
+            if (x._2._2 >= AppConfig.transAmtThreshold2 || x._2._4 >= AppConfig.transAmtThreshold2) {
               AppConfig.transAmtThreshold2
             } else
               AppConfig.transAmtThreshold1
@@ -138,9 +157,10 @@ object MySparkStreamingApp {
 
 //        AppConfig.outputStream.write(row.getBytes)
         println(row)
+
       })
 
-      AppConfig.outputStream.flush()
+//      AppConfig.outputStream.flush()
     })
 
     ssc
