@@ -23,24 +23,10 @@ object MyKafkaMessageDumper {
     AppConfig.messageStore = args(5)
 
     val context = createStreamingContext()
-    //      if (AppConfig.runMode.equals("local")) {
-    //        createStreamingContext()
-    //      } else {
-    //        StreamingContext.getOrCreate("/user/root/xiaoy/dump",
-    //          MyKafkaMessageDumper.functionToCreateContext)
-    //      }
 
     context.start() // Start the computation
     context.awaitTermination() // Wait for the computation to terminate
   }
-
-  //  def functionToCreateContext(): StreamingContext = {
-  //
-  //    val ssc = createStreamingContext()
-  //    ssc.checkpoint("/user/root/xiaoy/dump") // set checkpoint directory
-  //
-  //    ssc
-  //  }
 
   def createStreamingContext(): StreamingContext = {
     val logger = LoggerFactory.getLogger(MyKafkaMessageDumper.getClass)
@@ -71,11 +57,6 @@ object MyKafkaMessageDumper {
 
     val messages = km.createDirectStream[String, String, StringDecoder, StringDecoder](
       ssc, kafkaParams, topicsSet)
-
-    //    val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](
-    //      ssc, kafkaParams, topicsSet)
-
-    //    messages.checkpoint(Seconds(30))
 
     val rowCount = ssc.sparkContext.longAccumulator("rowCount")
     val msgStoreBroadcast = ssc.sparkContext.broadcast(AppConfig.messageStore)

@@ -11,11 +11,12 @@ import scala.io.Source
 object MyKafkaProducer {
   def main(args: Array[String]) {
 
-    val topic = args(0)
-    val dataFile = args(1)
+    val topic = args(1)
+    val dataFile = args(2)
+    val serverList = args(0)
 
     val props = new Properties()
-    props.put("bootstrap.servers", "host2:6667")
+    props.put("bootstrap.servers", serverList)
     props.put("acks", "1")
     props.put("retries", "3")
     props.put("batch.size", "16384")
@@ -35,11 +36,11 @@ object MyKafkaProducer {
       for (line <- source.getLines()) {
         val fields = line.split("\\^\\|")
         // 深市过户表
-        if (topic.equals("sztran-key")) {
-          producer.send(new ProducerRecord[String, String](topic, fields(2), line))
+        if (topic.equals("sztran")) {
+          producer.send(new ProducerRecord[String, String](topic, fields(3), line))
         } else {
           // 深市三秒行情表
-          producer.send(new ProducerRecord[String, String](topic, fields(0), line))
+          producer.send(new ProducerRecord[String, String](topic, fields(1), line))
         }
         count += 1
         if (count % 10000 == 0) {

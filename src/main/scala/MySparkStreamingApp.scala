@@ -94,18 +94,23 @@ object MySparkStreamingApp {
       ssc, kafkaParams, topicsSet)
 
     val recordDStream = messages.transform(rdd => {
-      val now = new Date().getTime
       rdd.map(m => {
         val fields = m._2.split("\\^\\|")
-        (fields(3), fields(4)) -> (now, fields(7).toFloat * fields(8).toFloat)
+        fields(3) -> (
+          fields(4) match {
+            case "B" => (fields(7).toFloat * fields(8).toFloat, 0.0F)
+            case "S" => (0.0F, fields(7).toFloat * fields(8).toFloat)
+          })
       })
     })
 
     val record3mWindow =
-      recordDStream.reduceByKeyAndWindow((x: (Long, Float), y: (Long, Float)) => {
-        (Math.max(x._1, y._1), x._2 + y._2)
+      recordDStream.reduceByKeyAndWindow((x: (Float, Float), y: (Float, Float)) => {
+        (x._1 + y._1, x._2 + y._2)
+      }, (x: (Float, Float), y: (Float, Float)) => {
+        (x._1 - y._1, x._2 - y._2)
       }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
-        .filter(x => x._2._2 >= thresholdBroadcast.value)
+        .filter(x => x._2._1 >= thresholdBroadcast.value || x._2._2 >= thresholdBroadcast.value)
 
 
     record3mWindow.foreachRDD(rdd => {
@@ -114,21 +119,21 @@ object MySparkStreamingApp {
 
       println("Warnings issued at %s ...".format(format.format(now)))
 
-      rdd.collect().filter(x => AppConfig.monitorList.contains(x._1._1)).foreach(x => {
+      rdd.collect().filter(x => AppConfig.monitorList.contains(x._1)).foreach(x => {
 
-        val row = "%s|%s|%.2f|%.2f\n".format(
-          format.format(now), x._1, x._2._2,
-          if (x._2._2 >= AppConfig.transAmtThreshold3) {
+        val row = "%s|%s|%.2f|%.2f|%.2f\n".format(
+          format.format(now), x._1, x._2._1, x._2._2,
+          if (x._2._1 >= AppConfig.transAmtThreshold3 || x._2._2 >= AppConfig.transAmtThreshold3) {
             AppConfig.transAmtThreshold3
           } else {
-            if (x._2._2 >= AppConfig.transAmtThreshold2) {
+            if (x._2._1 >= AppConfig.transAmtThreshold2 || x._2._2 >= AppConfig.transAmtThreshold2) {
               AppConfig.transAmtThreshold2
             } else
               AppConfig.transAmtThreshold1
           }
         )
 
-        AppConfig.outputStream.write(row.getBytes)
+//        AppConfig.outputStream.write(row.getBytes)
         println(row)
       })
 
