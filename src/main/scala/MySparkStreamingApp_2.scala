@@ -35,7 +35,7 @@ object MySparkStreamingApp_2 {
         createStreamingContext()
       } else {
         StreamingContext.getOrCreate("/user/root/xiaoy/cp",
-          MySparkStreamingApp.functionToCreateContext)
+          MySparkStreamingApp_2.functionToCreateContext)
       }
 
     val hdfs: FileSystem = FileSystem.get(new Configuration)
@@ -64,7 +64,7 @@ object MySparkStreamingApp_2 {
   def updateStateFunc(newValues: Seq[(Long, String, Float)], curState: Option[(List[(Long, Float)], Float, List[(Long, Float)], Float)])
   : Option[(List[(Long, Float)], Float, List[(Long, Float)], Float)] = {
 
-    val newValue:(Long, String, Float) = if (newValues.nonEmpty) newValues.head else (0, null, 0F)
+    val newValue: (Long, String, Float) = if (newValues.nonEmpty) newValues.head else (new Date().getTime, null, 0F)
 
     curState match {
       case None =>
@@ -80,6 +80,18 @@ object MySparkStreamingApp_2 {
           case "S" =>
             val newList = ((newValue._1, newValue._3) :: state._3).filter(_._1 >= newValue._1 - 180 * 1000)
             Some(state._1, state._2, newList, newList.reduce((x1, x2) => (0L, x1._2 + x2._2))._2)
+          case _ =>
+            val newList1 = state._1.filter(_._1 >= newValue._1 - 180 * 1000)
+            val newList2 = state._3.filter(_._1 >= newValue._1 - 180 * 1000)
+            Some(newList1,
+              if (newList1.nonEmpty)
+                newList1.reduce((x1, x2) => (0L, x1._2 + x2._2))._2
+              else 0F,
+              newList2,
+              if (newList2.nonEmpty)
+                newList2.reduce((x1, x2) => (0L, x1._2 + x2._2))._2
+              else 0F
+            )
         }
     }
   }
@@ -124,20 +136,20 @@ object MySparkStreamingApp_2 {
       })
     })
 
-//    val record3mWindow =
-//      recordDStream.reduceByKeyAndWindow((x: (Float, Float), y: (Float, Float)) => {
-//        (x._1 + y._1, x._2 + y._2)
-//      }, (x: (Float, Float), y: (Float, Float)) => {
-//        (x._1 - y._1, x._2 - y._2)
-//      }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
-//        .filter(x => x._2._1 >= thresholdBroadcast.value || x._2._2 >= thresholdBroadcast.value)
+    //    val record3mWindow =
+    //      recordDStream.reduceByKeyAndWindow((x: (Float, Float), y: (Float, Float)) => {
+    //        (x._1 + y._1, x._2 + y._2)
+    //      }, (x: (Float, Float), y: (Float, Float)) => {
+    //        (x._1 - y._1, x._2 - y._2)
+    //      }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
+    //        .filter(x => x._2._1 >= thresholdBroadcast.value || x._2._2 >= thresholdBroadcast.value)
 
     val runningState = recordDStream.updateStateByKey(MySparkStreamingApp_2.updateStateFunc)
+    val monitorListBroadcast = ssc.sparkContext.broadcast(AppConfig.monitorList)
 
     runningState.foreachRDD(rdd => {
       val now = new Date()
       val format = new SimpleDateFormat("hh:mm:ss.SSS")
-      val monitorListBroadcast = ssc.sparkContext.broadcast(AppConfig.monitorList)
 
       println("Warnings issued at %s ...".format(format.format(now)))
 
@@ -155,12 +167,12 @@ object MySparkStreamingApp_2 {
           }
         )
 
-//        AppConfig.outputStream.write(row.getBytes)
+        //        AppConfig.outputStream.write(row.getBytes)
         println(row)
 
       })
 
-//      AppConfig.outputStream.flush()
+      //      AppConfig.outputStream.flush()
     })
 
     ssc

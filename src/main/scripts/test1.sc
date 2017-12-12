@@ -12,4 +12,15 @@ m.contains(b)
 a == b
 a.equals(b)
 
+val s = "B"
+val s1 = s match {
+  case "B" => "B1"
+  case "S" => "S1"
+}
+
+val l:List[Int] = List()
+l.isEmpty
+l.reduce(_ + _)
+
+
 

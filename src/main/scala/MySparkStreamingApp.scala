@@ -93,27 +93,22 @@ object MySparkStreamingApp {
     val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](
       ssc, kafkaParams, topicsSet)
 
+    val monitorListBroadcast = ssc.sparkContext.broadcast(AppConfig.monitorList)
+
     val recordDStream = messages.transform(rdd => {
       rdd.map(m => {
         val fields = m._2.split("\\^\\|")
-        fields(3) -> (
-          fields(4) match {
-            case "B" => (fields(7).toFloat * fields(8).toFloat, 0.0F)
-            case "S" => (0.0F, fields(7).toFloat * fields(8).toFloat)
-          })
-      })
+        (fields(3), fields(4)) -> fields(7).toFloat * fields(8).toFloat
+      }).filter(x => monitorListBroadcast.value.contains(x._1._1))
     })
 
-    val monitorListBroadcast = ssc.sparkContext.broadcast(AppConfig.monitorList)
-
     val record3mWindow =
-      recordDStream.reduceByKeyAndWindow((x: (Float, Float), y: (Float, Float)) => {
-        (x._1 + y._1, x._2 + y._2)
-      }, (x: (Float, Float), y: (Float, Float)) => {
-        (x._1 - y._1, x._2 - y._2)
+      recordDStream.reduceByKeyAndWindow((x: Float, y: Float) => {
+        x + y
+      }, (x: Float, y: Float) => {
+        x - y
       }, Seconds(AppConfig.windowWidth.toInt), Seconds(AppConfig.slidingInterval.toInt))
-        .filter(x => monitorListBroadcast.value.contains(x._1) &&
-          (x._2._1 >= thresholdBroadcast.value || x._2._2 >= thresholdBroadcast.value))
+        .filter(x => x._2 >= thresholdBroadcast.value)
 
 
     record3mWindow.foreachRDD(rdd => {
@@ -124,22 +119,20 @@ object MySparkStreamingApp {
 
       rdd.collect().foreach(x => {
 
-        val row = "%s|%s|%.2f|%.2f|%.2f\n".format(
-          format.format(now), x._1, x._2._1, x._2._2,
-          if (x._2._1 >= AppConfig.transAmtThreshold3 || x._2._2 >= AppConfig.transAmtThreshold3) {
+        val row = "%s|%s|%.2f|%.2f\n".format(
+          format.format(now), x._1, x._2,
+          if (x._2 >= AppConfig.transAmtThreshold3) {
             AppConfig.transAmtThreshold3
           } else {
-            if (x._2._1 >= AppConfig.transAmtThreshold2 || x._2._2 >= AppConfig.transAmtThreshold2) {
+            if (x._2 >= AppConfig.transAmtThreshold2) {
               AppConfig.transAmtThreshold2
             } else
               AppConfig.transAmtThreshold1
           }
         )
-
-//        AppConfig.outputStream.write(row.getBytes)
+        AppConfig.outputStream.write(row.getBytes)
         println(row)
       })
-
       AppConfig.outputStream.flush()
     })
 
